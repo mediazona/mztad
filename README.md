@@ -13,6 +13,15 @@ Designed for data investigations and quick exploration
 
 [mzTad](https://github.com/mediazona/mztad/releases) (macOS + Windows)
 
+On macOS the app is ad-hoc signed, not notarized — on first launch Gatekeeper will say `"'mzTad" is damage and can't be opened. You should move it to the Bin"`:
+
+На macOS сборка подписана ad-hoc, не нотариирована — при первом запуске Gatekeeper выдаёт предупреждение `"'mzTad" is damage and can't be opened. You should move it to the Bin"`:
+
+Open terminal and run /  Откройте терминал и выполните:
+```bash
+xattr -cr /Applications/mzTad.app
+```
+
 ## Features
 
 - Query files in place via DuckDB — no import step
@@ -37,7 +46,7 @@ npm run dist:dir   # unsigned .app → release/mac-arm64/mzTad.app
 npm run dist       # .dmg + .zip (arm64)
 ```
 
-Unsigned builds trigger Gatekeeper on first launch — right-click → Open, or run `xattr -cr release/mac-arm64/mzTad.app`
+Builds are ad-hoc signed (no Apple Developer ID). Users will get an "unidentified developer" warning on first launch — right-click → Open, or run `xattr -cr /Applications/mzTad.app`. For transparent distribution without warnings, you'd need an Apple Developer membership + notarization.
 
 ## Build for Windows
 
@@ -79,7 +88,7 @@ npm run dist:dir   # неподписанный .app → release/mac-arm64/mzTad
 npm run dist       # .dmg + .zip (arm64)
 ```
 
-Неподписанные сборки при первом запуске блокирует Gatekeeper — правый клик → Открыть, или выполните `xattr -cr release/mac-arm64/mzTad.app`.
+Сборки подписаны ad-hoc (без Apple Developer ID). При первом запуске пользователь увидит предупреждение «от неустановленного разработчика» — правый клик → Открыть, либо `xattr -cr /Applications/mzTad.app`. Для «прозрачного» распространения без предупреждений нужна платная учётная запись Apple Developer и нотаризация.
 
 ## Сборка под Windows
 
