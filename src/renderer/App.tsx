@@ -9,6 +9,7 @@ import { SearchBar } from './SearchBar.js'
 import { ColumnsMenu } from './ColumnsMenu.js'
 import { SqlEditor } from './SqlEditor.js'
 import { DetailPanel, type FocusedCell } from './DetailPanel.js'
+import { K } from './keys.js'
 
 export default function App() {
   const [baseInfo, setBaseInfo] = useState<OpenFileResult | null>(null)
@@ -292,7 +293,7 @@ export default function App() {
         <div className={`empty-state ${dragOver ? 'drag-over' : ''}`}>
           <div style={{ fontSize: 18, fontWeight: 600 }}>mzTad</div>
           <div>Drop a Parquet, CSV, TSV, or JSON file here</div>
-          <div style={{ fontSize: 11 }}>— or use File → Open… (⌘O) —</div>
+          <div style={{ fontSize: 11 }}>— or use File → Open… ({K.combo(K.mod, 'O')}) —</div>
           {error && <div style={{ color: '#ff6b6b', marginTop: 8 }}>{error}</div>}
         </div>
         {busy && (
@@ -377,7 +378,9 @@ export default function App() {
           onClose={closeDetails}
         />
       )}
-      <div className="hint">Click cell · Drag to select · ⇧-click range · ⌘-click toggle cell · # column for row · ⌘C copy · ⌘⌥C copy + headers · Alt-click filter · ⌘F find · Dbl-click details</div>
+      <div className="hint">
+        Click cell · Drag to select · {K.combo(K.shift, 'click')} range · {K.combo(K.mod, 'click')} toggle cell · # column for row · {K.combo(K.mod, 'C')} copy · {K.combo(K.mod, K.alt, 'C')} copy + headers · {K.combo(K.alt, 'click')} filter · {K.combo(K.mod, 'F')} find · Dbl-click details
+      </div>
       {columnsMenuAnchor && (
         <ColumnsMenu
           anchor={columnsMenuAnchor}

@@ -9,6 +9,10 @@ Designed for data investigations and quick exploration
 
 ![Grid](docs/main.png)
 
+## Install
+
+[mzTad](https://github.com/mediazona/mztad/releases) (macOS + Windows)
+
 ## Features
 
 - Query files in place via DuckDB — no import step
@@ -34,6 +38,15 @@ npm run dist       # .dmg + .zip (arm64)
 ```
 
 Unsigned builds trigger Gatekeeper on first launch — right-click → Open, or run `xattr -cr release/mac-arm64/mzTad.app`
+
+## Build for Windows
+
+```bash
+npm run dist:win:dir   # unpacked → release/win-unpacked/mzTad.exe
+npm run dist:win       # NSIS installer (.exe) + portable .zip (x64)
+```
+
+Run on a Windows machine (or via CI). Cross-building on macOS requires the Windows DuckDB binary — pre-fetch it once with `npm install --cpu=x64 --os=win32 --force @duckdb/node-bindings-win32-x64`.
 
 ## Credits
 
@@ -67,6 +80,15 @@ npm run dist       # .dmg + .zip (arm64)
 ```
 
 Неподписанные сборки при первом запуске блокирует Gatekeeper — правый клик → Открыть, или выполните `xattr -cr release/mac-arm64/mzTad.app`.
+
+## Сборка под Windows
+
+```bash
+npm run dist:win:dir   # распакованная версия → release/win-unpacked/mzTad.exe
+npm run dist:win       # NSIS-установщик (.exe) + portable .zip (x64)
+```
+
+Запускайте на Windows (или в CI). Для кросс-сборки с macOS нужно заранее подтянуть Windows-бинарь DuckDB: `npm install --cpu=x64 --os=win32 --force @duckdb/node-bindings-win32-x64`.
 
 ## Авторы
 

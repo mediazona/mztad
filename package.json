@@ -15,7 +15,10 @@
     "typecheck": "pnpm typecheck:node && pnpm typecheck:web",
     "dist": "electron-vite build && electron-builder --mac",
     "dist:dir": "electron-vite build && electron-builder --mac --dir",
-    "dist:universal": "electron-vite build && electron-builder --mac --arm64 --x64"
+    "dist:universal": "electron-vite build && electron-builder --mac --arm64 --x64",
+    "prepare:win": "node scripts/install-duckdb-binding.mjs win32-x64",
+    "dist:win": "npm run prepare:win && electron-vite build && electron-builder --win",
+    "dist:win:dir": "npm run prepare:win && electron-vite build && electron-builder --win --dir"
   },
   "dependencies": {
     "@duckdb/node-api": "1.5.2-r.1",
@@ -64,6 +67,27 @@
     },
     "dmg": {
       "writeUpdateInfo": false
+    },
+    "win": {
+      "icon": "public/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "mzTad"
     }
   }
 }

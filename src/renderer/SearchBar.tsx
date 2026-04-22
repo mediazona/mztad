@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { K } from './keys.js'
 
 interface Props {
   value: string
@@ -60,21 +61,21 @@ export function SearchBar({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="search any column — ↵ next · ⇧↵ prev"
+        placeholder={`search any column — ${K.enter} next · ${K.combo(K.shift, K.enter)} prev`}
       />
       <span className="searchbar-count">{countLabel}</span>
       <button
         className="searchbar-nav"
         onClick={onPrev}
         disabled={navDisabled}
-        title="Previous match (Shift+Enter)"
+        title={`Previous match (${K.combo(K.shift, K.enter)})`}
         aria-label="Previous match"
       >↑</button>
       <button
         className="searchbar-nav"
         onClick={onNext}
         disabled={navDisabled}
-        title="Next match (Enter)"
+        title={`Next match (${K.enter})`}
         aria-label="Next match"
       >↓</button>
       <button className="searchbar-close" onClick={onClose} aria-label="Close search">×</button>

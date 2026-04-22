@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { K } from './keys.js'
 
 interface Props {
   initialSql: string
@@ -50,7 +51,7 @@ export function SqlEditor({ initialSql, isCustom, onRun, onReset, onClose }: Pro
         />
         {error && <div className="sql-error">{error}</div>}
         <div className="sql-modal-footer">
-          <div className="sql-hint">⌘↵ Run · Esc close</div>
+          <div className="sql-hint">{K.combo(K.mod, K.enter)} Run · Esc close</div>
           <div className="sql-modal-spacer" />
           {isCustom && (
             <button onClick={onReset} className="sql-reset">Reset to file</button>
