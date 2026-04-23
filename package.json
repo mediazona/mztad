@@ -1,6 +1,6 @@
 {
   "name": "mztad",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fast DuckDB-backed viewer for CSV/TSV/JSON/Parquet files",
   "type": "module",
   "main": "out/main/index.js",
@@ -47,6 +47,36 @@
     },
     "asarUnpack": [
       "**/node_modules/@duckdb/**/*"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["parquet", "pq"],
+        "name": "Parquet File",
+        "description": "Apache Parquet file",
+        "role": "Viewer",
+        "icon": "public/icon.png"
+      },
+      {
+        "ext": "csv",
+        "name": "CSV File",
+        "description": "Comma-separated values",
+        "role": "Viewer",
+        "icon": "public/icon.png"
+      },
+      {
+        "ext": "tsv",
+        "name": "TSV File",
+        "description": "Tab-separated values",
+        "role": "Viewer",
+        "icon": "public/icon.png"
+      },
+      {
+        "ext": ["json", "ndjson", "jsonl"],
+        "name": "JSON File",
+        "description": "JSON (flat or newline-delimited)",
+        "role": "Viewer",
+        "icon": "public/icon.png"
+      }
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

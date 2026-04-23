@@ -2,8 +2,10 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import App from './App.js'
+import { applyStoredTheme } from './theme.js'
 import './styles.css'
 
+applyStoredTheme()
 ModuleRegistry.registerModules([AllCommunityModule])
 
 const root = document.getElementById('root')!

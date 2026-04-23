@@ -71,6 +71,8 @@ export interface IpcApi {
   resetToBase(baseTableId: string): Promise<OpenFileResult>
   closeTable(tableId: string): Promise<void>
   findMatches(req: FindMatchesRequest): Promise<FindMatchesResult>
+  getRecents(): Promise<string[]>
+  clearRecents(): Promise<void>
   onOpenFile(cb: (path: string) => void): () => void
   pathForFile(file: File): string | undefined
 }

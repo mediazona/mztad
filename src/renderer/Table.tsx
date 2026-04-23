@@ -91,6 +91,7 @@ interface Props {
   matchIndexes: Set<number>
   currentMatchIndex: number | null
   searchText: string
+  theme: 'light' | 'dark'
   onAddFilter: (f: Filter) => void
   onToggleSort: (col: string, multi: boolean) => void
   onTotalMatched: (n: number) => void
@@ -108,6 +109,7 @@ export function Table({
   matchIndexes,
   currentMatchIndex,
   searchText,
+  theme,
   onAddFilter,
   onToggleSort,
   onTotalMatched,
@@ -236,12 +238,12 @@ export function Table({
       if (idx == null) return undefined
       if (idx === currentMatchIndexRef.current) {
         return {
-          backgroundColor: 'rgba(90, 169, 255, 0.38)',
-          boxShadow: 'inset 3px 0 0 #5aa9ff',
+          backgroundColor: 'var(--row-match-current-bg)',
+          boxShadow: 'inset 3px 0 0 var(--accent)',
         } as RowStyle
       }
       if (matchIndexesRef.current.has(idx)) {
-        return { backgroundColor: 'rgba(90, 169, 255, 0.16)' } as RowStyle
+        return { backgroundColor: 'var(--row-match-bg)' } as RowStyle
       }
       return undefined
     },
@@ -500,7 +502,10 @@ export function Table({
   }
 
   return (
-    <div className="ag-theme-quartz-dark grid-wrap" style={{ width: '100%', height: '100%' }}>
+    <div
+      className={`${theme === 'dark' ? 'ag-theme-quartz-dark' : 'ag-theme-quartz'} grid-wrap`}
+      style={{ width: '100%', height: '100%' }}
+    >
       <AgGridReact
         theme="legacy"
         columnDefs={colDefs}

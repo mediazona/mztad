@@ -11,6 +11,7 @@ interface Props {
   matchPos: number
   truncated: boolean
   loading: boolean
+  focusTrigger: number
 }
 
 export function SearchBar({
@@ -23,13 +24,14 @@ export function SearchBar({
   matchPos,
   truncated,
   loading,
+  focusTrigger,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
     inputRef.current?.select()
-  }, [])
+  }, [focusTrigger])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') {

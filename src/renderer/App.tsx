@@ -10,6 +10,7 @@ import { ColumnsMenu } from './ColumnsMenu.js'
 import { SqlEditor } from './SqlEditor.js'
 import { DetailPanel, type FocusedCell } from './DetailPanel.js'
 import { K } from './keys.js'
+import { useTheme } from './theme.js'
 
 export default function App() {
   const [baseInfo, setBaseInfo] = useState<OpenFileResult | null>(null)
@@ -19,6 +20,7 @@ export default function App() {
   const [rawSearch, setRawSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [searchFocusTrigger, setSearchFocusTrigger] = useState(0)
   const [matches, setMatches] = useState<FindMatchesResult>({ indexes: [], truncated: false })
   const [matchPos, setMatchPos] = useState(0)
   const [searchLoading, setSearchLoading] = useState(false)
@@ -33,6 +35,21 @@ export default function App() {
   const [focusedCell, setFocusedCell] = useState<FocusedCell | null>(null)
   const dragDepth = useRef(0)
   const columnsBtnRef = useRef<HTMLButtonElement>(null)
+  const { theme, resolved: resolvedTheme, cycle: cycleTheme } = useTheme()
+  const [recents, setRecents] = useState<string[]>([])
+
+  // Fetch recents while there's no file open (i.e., while the empty state is showing).
+  useEffect(() => {
+    if (activeInfo) return
+    let cancelled = false
+    window.api.getRecents().then((list) => { if (!cancelled) setRecents(list) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [activeInfo])
+
+  const clearRecents = useCallback(async () => {
+    await window.api.clearRecents()
+    setRecents([])
+  }, [])
 
   const isCustom = !!(baseInfo && activeInfo && baseInfo.tableId !== activeInfo.tableId)
 
@@ -158,13 +175,14 @@ export default function App() {
     }
   }, [openPath])
 
-  // Cmd/Ctrl+F opens search
+  // Cmd/Ctrl+F opens (or re-focuses) the search bar and selects its current text
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         if (!activeInfo) return
         e.preventDefault()
         setSearchOpen(true)
+        setSearchFocusTrigger((n) => n + 1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -211,9 +229,9 @@ export default function App() {
   const showAllColumns = useCallback(() => setHiddenCols(new Set()), [])
 
   const closeSearch = useCallback(() => {
+    // Only hide the bar — preserve rawSearch/debouncedSearch so Cmd+F reopens
+    // with the previous query pre-selected and matches still navigable.
     setSearchOpen(false)
-    setRawSearch('')
-    setDebouncedSearch('')
   }, [])
 
   const onFocusCell = useCallback((col: string, value: unknown, rowIndex: number) => {
@@ -295,6 +313,33 @@ export default function App() {
           <div>Drop a Parquet, CSV, TSV, or JSON file here</div>
           <div style={{ fontSize: 11 }}>— or use File → Open… ({K.combo(K.mod, 'O')}) —</div>
           {error && <div style={{ color: '#ff6b6b', marginTop: 8 }}>{error}</div>}
+          {recents.length > 0 && (
+            <div className="recents">
+              <div className="recents-header">
+                <span>Recent</span>
+                <button className="recents-clear" onClick={() => void clearRecents()}>Clear</button>
+              </div>
+              <ul className="recents-list">
+                {recents.slice(0, 10).map((p) => {
+                  const sep = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+                  const name = sep >= 0 ? p.slice(sep + 1) : p
+                  const dir = sep >= 0 ? p.slice(0, sep) : ''
+                  return (
+                    <li key={p}>
+                      <button
+                        className="recents-item"
+                        onClick={() => void openPath(p)}
+                        title={p}
+                      >
+                        <span className="recents-name">{name}</span>
+                        <span className="recents-dir">{dir}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </div>
         {busy && (
           <div className="loading-overlay">
@@ -339,6 +384,14 @@ export default function App() {
           Details
         </button>
         <button className="tb-btn" onClick={() => setSqlEditorOpen(true)}>SQL</button>
+        <button
+          className="tb-btn"
+          onClick={cycleTheme}
+          title={`Theme: ${theme} (click to cycle)`}
+          aria-label="Toggle theme"
+        >
+          {theme === 'dark' ? '🌙' : theme === 'light' ? '☀' : '◐'}
+        </button>
         {error && <div className="tb-error">{error}</div>}
       </div>
       {searchOpen && (
@@ -352,6 +405,7 @@ export default function App() {
           matchPos={matchPos}
           truncated={matches.truncated}
           loading={searchLoading}
+          focusTrigger={searchFocusTrigger}
         />
       )}
       <FilterChips filters={filters} onRemove={removeFilter} onClear={clearFilters} />
@@ -364,6 +418,7 @@ export default function App() {
         matchIndexes={matchSet}
         currentMatchIndex={currentMatchRowIndex}
         searchText={debouncedSearch}
+        theme={resolvedTheme}
         onAddFilter={addFilter}
         onToggleSort={toggleSort}
         onTotalMatched={setTotalMatched}

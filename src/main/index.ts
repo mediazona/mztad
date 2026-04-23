@@ -4,6 +4,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { DuckDBService } from './duckdb.js'
 import { createTracker, registerIpc } from './ipc.js'
+import { Recents } from './recents.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -11,6 +12,7 @@ app.setName('mzTad')
 
 const db = new DuckDBService()
 const tracker = createTracker()
+let recents: Recents // initialized once app is ready (needs app.getPath)
 const windowsByPath = new Map<string, BrowserWindow>()
 const pendingFiles: string[] = [] // args/open-file events arriving before ready
 
@@ -139,6 +141,27 @@ async function showAboutDialog(): Promise<void> {
   if (result.response === 1) await shell.openExternal('https://donate.zona.media')
 }
 
+function recentsSubmenu(): Electron.MenuItemConstructorOptions[] {
+  const list = recents?.list() ?? []
+  if (list.length === 0) {
+    return [{ label: 'No Recent Files', enabled: false }]
+  }
+  const entries: Electron.MenuItemConstructorOptions[] = list.slice(0, 10).map((p) => ({
+    label: path.basename(p),
+    sublabel: p,
+    click: () => { openPathInFocusedOrNew(p) },
+  }))
+  entries.push({ type: 'separator' })
+  entries.push({
+    label: 'Clear Menu',
+    click: () => {
+      recents.clear()
+      try { app.clearRecentDocuments() } catch { /* not supported */ }
+    },
+  })
+  return entries
+}
+
 function buildMenu(): void {
   const isMac = process.platform === 'darwin'
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -162,6 +185,7 @@ function buildMenu(): void {
       label: 'File',
       submenu: [
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => void openViaDialog() },
+        { label: 'Open Recent', submenu: recentsSubmenu() },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -187,8 +211,10 @@ app.whenReady().then(async () => {
     copyright: 'Made by Mediazona — zona.media',
     website: 'https://zona.media',
   })
+  recents = new Recents(path.join(app.getPath('userData'), 'recents.json'))
+  recents.onChange(() => buildMenu())
   await db.init()
-  registerIpc(db, tracker)
+  registerIpc(db, tracker, recents)
   buildMenu()
 
   const cliFiles = parseCliArgs(process.argv)

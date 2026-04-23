@@ -1,6 +1,7 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import type { FindMatchesRequest, PageRequest } from '@shared/types'
 import { DuckDBService } from './duckdb.js'
+import { Recents } from './recents.js'
 
 export interface WindowTableTracker {
   add(wcId: number, tableId: string): void
@@ -36,10 +37,16 @@ export function createTracker(): WindowTableTracker {
   }
 }
 
-export function registerIpc(db: DuckDBService, tracker: WindowTableTracker): void {
+export function registerIpc(
+  db: DuckDBService,
+  tracker: WindowTableTracker,
+  recents: Recents,
+): void {
   ipcMain.handle('mztad:openFile', async (e, filePath: string) => {
     const result = await db.openFile(filePath)
     tracker.add(e.sender.id, result.tableId)
+    recents.add(filePath)
+    try { app.addRecentDocument(filePath) } catch { /* not supported on this platform/OS */ }
     return result
   })
   ipcMain.handle('mztad:getPage', async (_e, req: PageRequest) => db.getPage(req))
@@ -56,4 +63,9 @@ export function registerIpc(db: DuckDBService, tracker: WindowTableTracker): voi
     tracker.remove(e.sender.id, tableId)
   })
   ipcMain.handle('mztad:findMatches', async (_e, req: FindMatchesRequest) => db.findMatches(req))
+  ipcMain.handle('mztad:getRecents', () => recents.list())
+  ipcMain.handle('mztad:clearRecents', () => {
+    recents.clear()
+    try { app.clearRecentDocuments() } catch { /* not supported */ }
+  })
 }

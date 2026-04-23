@@ -22,6 +22,8 @@ const api: IpcApi = {
   closeTable: (tableId) => ipcRenderer.invoke('mztad:closeTable', tableId) as Promise<void>,
   findMatches: (req: FindMatchesRequest) =>
     ipcRenderer.invoke('mztad:findMatches', req) as Promise<FindMatchesResult>,
+  getRecents: () => ipcRenderer.invoke('mztad:getRecents') as Promise<string[]>,
+  clearRecents: () => ipcRenderer.invoke('mztad:clearRecents') as Promise<void>,
   onOpenFile: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, p: string) => cb(p)
     ipcRenderer.on('mztad:open-file', listener)
