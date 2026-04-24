@@ -15,6 +15,8 @@ function describeFilter(f: Filter): { op: string; value: string } {
     case 'notContains': return { op: "doesn't contain", value: f.value }
     case 'startsWith': return { op: 'starts', value: f.value }
     case 'endsWith': return { op: 'ends', value: f.value }
+    case 'regex': return { op: '~', value: f.value }
+    case 'notRegex': return { op: '!~', value: f.value }
     case 'isNull': return { op: 'is', value: 'null' }
     case 'notNull': return { op: 'is', value: 'not null' }
   }
@@ -24,20 +26,48 @@ interface Props {
   filters: Filter[]
   onRemove: (index: number) => void
   onClear: () => void
+  onEdit?: (index: number, anchor: DOMRect) => void
 }
 
-export function FilterChips({ filters, onRemove, onClear }: Props) {
+// `in`/`notIn` filters have no popover UI today, so they're not editable.
+function isEditable(f: Filter): boolean {
+  return f.op !== 'in' && f.op !== 'notIn'
+}
+
+export function FilterChips({ filters, onRemove, onClear, onEdit }: Props) {
   if (filters.length === 0) return null
   return (
     <div className="chips">
       {filters.map((f, i) => {
         const { op, value } = describeFilter(f)
+        const editable = onEdit != null && isEditable(f)
+        const onChipClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+          if (!editable) return
+          onEdit!(i, e.currentTarget.getBoundingClientRect())
+        }
+        // Stop the native mousedown before it reaches FilterPopover's document
+        // listener — otherwise clicking a chip while a popover is already open
+        // would close and immediately reopen it in a visible flicker.
+        const onChipMouseDown = (e: React.MouseEvent<HTMLSpanElement>) => {
+          if (!editable) return
+          e.nativeEvent.stopImmediatePropagation()
+        }
         return (
-          <span key={i} className="chip" title={`${f.col} ${op} ${value}`}>
+          <span
+            key={i}
+            className={`chip${editable ? ' chip-editable' : ''}`}
+            title={editable ? `Edit filter — ${f.col} ${op} ${value}` : `${f.col} ${op} ${value}`}
+            onMouseDown={onChipMouseDown}
+            onClick={onChipClick}
+          >
             <span className="col">{f.col}</span>
             <span className="op">{op}</span>
             <span>{value}</span>
-            <button aria-label="Remove filter" onClick={() => onRemove(i)}>×</button>
+            <button
+              aria-label="Remove filter"
+              onClick={(e) => { e.stopPropagation(); onRemove(i) }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >×</button>
           </span>
         )
       })}

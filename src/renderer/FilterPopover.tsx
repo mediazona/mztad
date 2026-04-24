@@ -5,6 +5,7 @@ import type { ColumnSchema, Filter } from '@shared/types'
 type Op =
   | 'eq' | 'neq'
   | 'contains' | 'notContains' | 'startsWith' | 'endsWith'
+  | 'regex' | 'notRegex'
   | 'gt' | 'gte' | 'lt' | 'lte' | 'between'
   | 'isNull' | 'notNull'
 
@@ -29,7 +30,7 @@ function opsForType(type: string): Op[] {
   if (isNumericType(type) || isDateType(type)) {
     return ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'between', 'isNull', 'notNull']
   }
-  return ['eq', 'neq', 'contains', 'notContains', 'startsWith', 'endsWith', 'isNull', 'notNull']
+  return ['eq', 'neq', 'contains', 'notContains', 'startsWith', 'endsWith', 'regex', 'notRegex', 'isNull', 'notNull']
 }
 
 const OP_LABEL: Record<Op, string> = {
@@ -39,6 +40,8 @@ const OP_LABEL: Record<Op, string> = {
   notContains: "doesn't contain",
   startsWith: 'starts with',
   endsWith: 'ends with',
+  regex: 'matches regex',
+  notRegex: "doesn't match regex",
   gt: '>',
   gte: '≥',
   lt: '<',
@@ -59,19 +62,68 @@ function coerce(value: string, numeric: boolean): string | number {
 interface Props {
   anchor: DOMRect
   colSchema: ColumnSchema
+  initial?: Filter
   onApply: (f: Filter) => void
   onHide: () => void
   onClose: () => void
 }
 
-export function FilterPopover({ anchor, colSchema, onApply, onHide, onClose }: Props) {
+type InitialState = { op: Op; value: string; value2: string; caseSensitive: boolean }
+
+// Reverse of the apply() switch: map an existing Filter back into popover
+// state so clicking a chip reopens it with the same values prefilled.
+function stateFromFilter(f: Filter, fallback: Op): InitialState {
+  const s: InitialState = { op: fallback, value: '', value2: '', caseSensitive: false }
+  switch (f.op) {
+    case 'eq':
+    case 'neq':
+      s.op = f.op
+      s.value = f.value == null ? '' : String(f.value)
+      break
+    case 'contains':
+    case 'notContains':
+    case 'startsWith':
+    case 'endsWith':
+    case 'regex':
+    case 'notRegex':
+      s.op = f.op
+      s.value = f.value
+      s.caseSensitive = !!f.caseSensitive
+      break
+    case 'gt':
+    case 'gte':
+    case 'lt':
+    case 'lte':
+      s.op = f.op
+      s.value = String(f.value)
+      break
+    case 'range':
+      s.op = 'between'
+      s.value = f.min == null ? '' : String(f.min)
+      s.value2 = f.max == null ? '' : String(f.max)
+      break
+    case 'isNull':
+    case 'notNull':
+      s.op = f.op
+      break
+    case 'in':
+    case 'notIn':
+      // Shouldn't land here — chips guard editing these — but fall back safely.
+      break
+  }
+  return s
+}
+
+export function FilterPopover({ anchor, colSchema, initial, onApply, onHide, onClose }: Props) {
   const ops = opsForType(colSchema.type)
-  const [op, setOp] = useState<Op>(ops[0]!)
-  const [value, setValue] = useState('')
-  const [value2, setValue2] = useState('')
-  const [caseSensitive, setCaseSensitive] = useState(false)
+  const seed = initial ? stateFromFilter(initial, ops[0]!) : null
+  const [op, setOp] = useState<Op>(seed?.op ?? ops[0]!)
+  const [value, setValue] = useState(seed?.value ?? '')
+  const [value2, setValue2] = useState(seed?.value2 ?? '')
+  const [caseSensitive, setCaseSensitive] = useState(seed?.caseSensitive ?? false)
   const popRef = useRef<HTMLDivElement>(null)
   const numeric = isNumericType(colSchema.type)
+  const isEditing = initial != null
 
   useEffect(() => {
     const onDocMouseDown = (e: MouseEvent) => {
@@ -88,7 +140,9 @@ export function FilterPopover({ anchor, colSchema, onApply, onHide, onClose }: P
 
   const needsValue = op !== 'isNull' && op !== 'notNull'
   const needsTwoValues = op === 'between'
-  const isStringLike = op === 'contains' || op === 'notContains' || op === 'startsWith' || op === 'endsWith'
+  const isRegex = op === 'regex' || op === 'notRegex'
+  const isStringLike =
+    op === 'contains' || op === 'notContains' || op === 'startsWith' || op === 'endsWith' || isRegex
 
   const apply = () => {
     const col = colSchema.name
@@ -105,6 +159,8 @@ export function FilterPopover({ anchor, colSchema, onApply, onHide, onClose }: P
       case 'notContains':
       case 'startsWith':
       case 'endsWith':
+      case 'regex':
+      case 'notRegex':
         if (value === '') return
         filter = { col, op, value, caseSensitive }
         break
@@ -159,7 +215,8 @@ export function FilterPopover({ anchor, colSchema, onApply, onHide, onClose }: P
           className="fp-value"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder={needsTwoValues ? 'min' : 'value'}
+          placeholder={needsTwoValues ? 'min' : isRegex ? 'pattern (e.g. ^foo.*bar$)' : 'value'}
+          spellCheck={isRegex ? false : undefined}
         />
       )}
       {needsTwoValues && (
@@ -184,7 +241,7 @@ export function FilterPopover({ anchor, colSchema, onApply, onHide, onClose }: P
         <button onClick={onHide} className="fp-hide">Hide column</button>
         <div className="fp-actions-spacer" />
         <button onClick={onClose}>Cancel</button>
-        <button className="fp-apply" onClick={apply}>Apply</button>
+        <button className="fp-apply" onClick={apply}>{isEditing ? 'Update' : 'Apply'}</button>
       </div>
     </div>,
     document.body,

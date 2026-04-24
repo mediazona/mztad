@@ -30,6 +30,7 @@ export type Filter =
   | { col: string; op: 'gt' | 'gte' | 'lt' | 'lte'; value: string | number }
   | { col: string; op: 'range'; min?: number | string; max?: number | string }
   | { col: string; op: 'contains' | 'notContains' | 'startsWith' | 'endsWith'; value: string; caseSensitive?: boolean }
+  | { col: string; op: 'regex' | 'notRegex'; value: string; caseSensitive?: boolean }
   | { col: string; op: 'isNull' | 'notNull' }
 
 export interface Sort {

@@ -198,6 +198,8 @@ html, body, #root {
 }
 .chip .col { color: var(--accent); font-weight: 600; }
 .chip .op { color: var(--fg-dim); }
+.chip-editable { cursor: pointer; }
+.chip-editable:hover { border-color: var(--accent); }
 .chip button {
   background: transparent;
   border: 0;
@@ -222,6 +224,30 @@ html, body, #root {
 .grid-wrap {
   flex: 1;
   min-height: 0;
+}
+
+.grid-host {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bg);
+  z-index: 5;
+}
+.filter-empty-title {
+  color: var(--fg-dim);
+  font-size: 13px;
 }
 
 /* The default 4px column-resize handle sits flush with the window edge on the

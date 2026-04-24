@@ -4,6 +4,7 @@ import 'ag-grid-community/styles/ag-theme-quartz.css'
 import type { FindMatchesResult, Filter, OpenFileResult, Sort } from '@shared/types'
 import { formatPageSql, quoteIdent } from '@shared/sqlBuilder'
 import { FilterChips } from './FilterChips.js'
+import { FilterPopover } from './FilterPopover.js'
 import { Table } from './Table.js'
 import { SearchBar } from './SearchBar.js'
 import { ColumnsMenu } from './ColumnsMenu.js'
@@ -38,6 +39,7 @@ export default function App() {
   const { theme, resolved: resolvedTheme, cycle: cycleTheme } = useTheme()
   const [recents, setRecents] = useState<string[]>([])
   const [fileStale, setFileStale] = useState(false)
+  const [editingFilter, setEditingFilter] = useState<{ index: number; anchor: DOMRect } | null>(null)
 
   // Fetch recents while there's no file open (i.e., while the empty state is showing).
   useEffect(() => {
@@ -130,6 +132,7 @@ export default function App() {
       setSearchOpen(false)
       setHiddenCols(new Set())
       setTotalMatched(info.rowCount)
+      setEditingFilter(null)
       oldIds.delete(info.tableId)
       for (const id of oldIds) void window.api.closeTable(id)
     } catch (e) {
@@ -199,6 +202,9 @@ export default function App() {
   const addFilter = useCallback((f: Filter) => {
     setFilters((prev) => [...prev, f])
   }, [])
+  const replaceFilter = useCallback((index: number, f: Filter) => {
+    setFilters((prev) => prev.map((existing, i) => (i === index ? f : existing)))
+  }, [])
   const toggleSort = useCallback((col: string, multi: boolean) => {
     setSorts((prev) => {
       const existing = prev.find((s) => s.col === col)
@@ -215,8 +221,12 @@ export default function App() {
   }, [])
   const removeFilter = useCallback((i: number) => {
     setFilters((prev) => prev.filter((_, idx) => idx !== i))
+    setEditingFilter(null)
   }, [])
-  const clearFilters = useCallback(() => setFilters([]), [])
+  const clearFilters = useCallback(() => {
+    setFilters([])
+    setEditingFilter(null)
+  }, [])
 
   const hideColumn = useCallback((col: string) => {
     setHiddenCols((prev) => {
@@ -281,6 +291,7 @@ export default function App() {
       setDebouncedSearch('')
       setHiddenCols(new Set())
       setTotalMatched(info.rowCount)
+      setEditingFilter(null)
       if (priorCustomId && priorCustomId !== info.tableId) {
         void window.api.closeTable(priorCustomId)
       }
@@ -306,6 +317,7 @@ export default function App() {
       setHiddenCols(new Set())
       setTotalMatched(info.rowCount)
       setSqlEditorOpen(false)
+      setEditingFilter(null)
       if (priorCustomId) void window.api.closeTable(priorCustomId)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -424,25 +436,38 @@ export default function App() {
           focusTrigger={searchFocusTrigger}
         />
       )}
-      <FilterChips filters={filters} onRemove={removeFilter} onClear={clearFilters} />
-      <Table
-        tableId={activeInfo.tableId}
-        schema={activeInfo.schema}
-        colWidths={activeInfo.colWidths}
+      <FilterChips
         filters={filters}
-        sorts={sorts}
-        hiddenCols={hiddenCols}
-        matchIndexes={matchSet}
-        currentMatchIndex={currentMatchRowIndex}
-        searchText={debouncedSearch}
-        theme={resolvedTheme}
-        onAddFilter={addFilter}
-        onToggleSort={toggleSort}
-        onTotalMatched={setTotalMatched}
-        onHideColumn={hideColumn}
-        onFocusCell={onFocusCell}
-        onOpenDetails={openDetails}
+        onRemove={removeFilter}
+        onClear={clearFilters}
+        onEdit={(index, anchor) => setEditingFilter({ index, anchor })}
       />
+      <div className="grid-host">
+        <Table
+          tableId={activeInfo.tableId}
+          schema={activeInfo.schema}
+          colWidths={activeInfo.colWidths}
+          filters={filters}
+          sorts={sorts}
+          hiddenCols={hiddenCols}
+          matchIndexes={matchSet}
+          currentMatchIndex={currentMatchRowIndex}
+          searchText={debouncedSearch}
+          theme={resolvedTheme}
+          onAddFilter={addFilter}
+          onToggleSort={toggleSort}
+          onTotalMatched={setTotalMatched}
+          onHideColumn={hideColumn}
+          onFocusCell={onFocusCell}
+          onOpenDetails={openDetails}
+        />
+        {filters.length > 0 && totalMatched === 0 && (
+          <div className="filter-empty">
+            <div className="filter-empty-title">No rows match the current filters</div>
+            <button className="tb-btn" onClick={clearFilters}>Clear filters</button>
+          </div>
+        )}
+      </div>
       {detailsOpen && (
         <DetailPanel
           focusedCell={focusedCell}
@@ -463,6 +488,29 @@ export default function App() {
           onClose={() => setColumnsMenuAnchor(null)}
         />
       )}
+      {editingFilter && (() => {
+        const f = filters[editingFilter.index]
+        if (!f) return null
+        const schema = activeInfo.schema.find((c) => c.name === f.col)
+        if (!schema) return null
+        return (
+          <FilterPopover
+            key={editingFilter.index}
+            anchor={editingFilter.anchor}
+            colSchema={schema}
+            initial={f}
+            onApply={(updated) => {
+              replaceFilter(editingFilter.index, updated)
+              setEditingFilter(null)
+            }}
+            onHide={() => {
+              hideColumn(f.col)
+              setEditingFilter(null)
+            }}
+            onClose={() => setEditingFilter(null)}
+          />
+        )
+      })()}
       {sqlEditorOpen && (
         <SqlEditor
           initialSql={currentSqlPreview}

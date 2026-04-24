@@ -103,6 +103,22 @@ export function buildWhere(
         params.push(pat)
         break
       }
+      case 'regex':
+      case 'notRegex': {
+        // DuckDB's regexp_matches returns true on any substring match; users
+        // can anchor with ^/$ for whole-string behavior. Case-insensitive
+        // matching goes through the 'i' option flag.
+        const expr = f.caseSensitive
+          ? `regexp_matches(${c}, ?)`
+          : `regexp_matches(${c}, ?, 'i')`
+        if (f.op === 'notRegex') {
+          clauses.push(`(${c} IS NULL OR NOT ${expr})`)
+        } else {
+          clauses.push(expr)
+        }
+        params.push(f.value)
+        break
+      }
       case 'isNull':
         clauses.push(`${c} IS NULL`)
         break
