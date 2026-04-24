@@ -258,6 +258,15 @@ html, body, #root {
   width: 14px;
 }
 
+/* Darken the header row a touch more than the AG Grid defaults so the
+   boundary with data rows reads more clearly. */
+.grid-wrap.ag-theme-quartz-dark {
+  --ag-header-background-color: #15171a;
+}
+.grid-wrap.ag-theme-quartz {
+  --ag-header-background-color: #e6e9ec;
+}
+
 .hint {
   padding: 4px 12px;
   color: var(--fg-dim);
