@@ -224,6 +224,14 @@ html, body, #root {
   min-height: 0;
 }
 
+/* The default 4px column-resize handle sits flush with the window edge on the
+   last column, making it painful to grab. Widen the hit area only there — the
+   visual indicator is still the cursor flip, the extra width is purely a
+   bigger click target that extends inward. */
+.grid-wrap .ag-header-row .ag-header-cell:last-child .ag-header-cell-resize {
+  width: 14px;
+}
+
 .hint {
   padding: 4px 12px;
   color: var(--fg-dim);
@@ -257,12 +265,14 @@ html, body, #root {
   border: 0;
   color: var(--fg-dim);
   cursor: pointer;
-  padding: 4px 6px;
+  padding: 0 10px;
   line-height: 0;
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: stretch;
+  margin-right: -6px;
 }
 .col-header-filter:hover {
   color: var(--accent);
