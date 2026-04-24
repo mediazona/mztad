@@ -74,6 +74,7 @@ export interface IpcApi {
   getRecents(): Promise<string[]>
   clearRecents(): Promise<void>
   onOpenFile(cb: (path: string) => void): () => void
+  onFileChanged(cb: () => void): () => void
   pathForFile(file: File): string | undefined
 }
 

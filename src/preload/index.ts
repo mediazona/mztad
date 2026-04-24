@@ -29,6 +29,11 @@ const api: IpcApi = {
     ipcRenderer.on('mztad:open-file', listener)
     return () => ipcRenderer.removeListener('mztad:open-file', listener)
   },
+  onFileChanged: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on('mztad:file-changed', listener)
+    return () => ipcRenderer.removeListener('mztad:file-changed', listener)
+  },
   pathForFile: (file: File) => {
     try {
       return webUtils.getPathForFile(file)

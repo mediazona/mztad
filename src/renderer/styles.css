@@ -392,6 +392,17 @@ html, body, #root {
   color: var(--accent-ink);
   filter: brightness(1.08);
 }
+.tb-btn-stale {
+  background: #b45309;
+  color: #fff;
+  border-color: #b45309;
+}
+.tb-btn-stale:hover {
+  background: #b45309;
+  color: #fff;
+  filter: brightness(1.08);
+  border-color: #b45309;
+}
 .tb-error {
   color: #ff6b6b;
   font-size: 11px;

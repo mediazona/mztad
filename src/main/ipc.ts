@@ -1,7 +1,17 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, webContents } from 'electron'
 import type { FindMatchesRequest, PageRequest } from '@shared/types'
 import { DuckDBService } from './duckdb.js'
+import { FileWatcher } from './fileWatcher.js'
 import { Recents } from './recents.js'
+
+const watchers = new Map<number, FileWatcher>()
+
+export function disposeWatcherForWebContents(wcId: number): void {
+  const w = watchers.get(wcId)
+  if (!w) return
+  w.stop()
+  watchers.delete(wcId)
+}
 
 export interface WindowTableTracker {
   add(wcId: number, tableId: string): void
@@ -44,9 +54,21 @@ export function registerIpc(
 ): void {
   ipcMain.handle('mztad:openFile', async (e, filePath: string) => {
     const result = await db.openFile(filePath)
-    tracker.add(e.sender.id, result.tableId)
+    const wcId = e.sender.id
+    tracker.add(wcId, result.tableId)
     recents.add(filePath)
     try { app.addRecentDocument(filePath) } catch { /* not supported on this platform/OS */ }
+
+    // (Re)watch the file so we can prompt the user to reload when it changes.
+    let watcher = watchers.get(wcId)
+    if (!watcher) {
+      watcher = new FileWatcher(() => {
+        const wc = webContents.fromId(wcId)
+        if (wc && !wc.isDestroyed()) wc.send('mztad:file-changed')
+      })
+      watchers.set(wcId, watcher)
+    }
+    watcher.watch(filePath)
     return result
   })
   ipcMain.handle('mztad:getPage', async (_e, req: PageRequest) => db.getPage(req))

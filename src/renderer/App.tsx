@@ -37,6 +37,7 @@ export default function App() {
   const columnsBtnRef = useRef<HTMLButtonElement>(null)
   const { theme, resolved: resolvedTheme, cycle: cycleTheme } = useTheme()
   const [recents, setRecents] = useState<string[]>([])
+  const [fileStale, setFileStale] = useState(false)
 
   // Fetch recents while there's no file open (i.e., while the empty state is showing).
   useEffect(() => {
@@ -112,6 +113,7 @@ export default function App() {
 
   const openPath = useCallback(async (filePath: string) => {
     setError(null)
+    setFileStale(false)
     const basename = filePath.split('/').pop() ?? filePath
     setBusy({ title: `Opening ${basename}`, subtitle: 'scanning schema & row count…' })
     const oldIds = new Set<string>()
@@ -141,6 +143,11 @@ export default function App() {
     const off = window.api.onOpenFile((p) => void openPath(p))
     return off
   }, [openPath])
+
+  useEffect(() => {
+    const off = window.api.onFileChanged(() => setFileStale(true))
+    return off
+  }, [])
 
   useEffect(() => {
     const onDragEnter = (e: DragEvent) => {
@@ -371,6 +378,15 @@ export default function App() {
           {activeInfo.kind}
         </div>
         <div className="spacer" />
+        {fileStale && (
+          <button
+            className="tb-btn tb-btn-stale"
+            onClick={() => void openPath(baseInfo.path)}
+            title="The file on disk has changed since it was opened"
+          >
+            File changed — Reload
+          </button>
+        )}
         {isCustom && (
           <button className="tb-btn" onClick={() => void resetToBase()}>Reset to file</button>
         )}
