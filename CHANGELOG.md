@@ -3,7 +3,13 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.2]
+- feat: reload button when opened file changed
+- feat: auto resize columns to fit content on start (based on sample and extremes)
+- feat: regex filters
+- feat: show "no matches" when filters yield no results
+- fix: render delay on large files when search jumps some distance
+- fix: last column resize handler collapsed with window edge
 
 ## [0.1.1]
 
