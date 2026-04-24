@@ -1,6 +1,6 @@
 {
   "name": "mztad",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fast DuckDB-backed viewer for CSV/TSV/JSON/Parquet files",
   "type": "module",
   "main": "out/main/index.js",

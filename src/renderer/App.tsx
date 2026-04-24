@@ -428,6 +428,7 @@ export default function App() {
       <Table
         tableId={activeInfo.tableId}
         schema={activeInfo.schema}
+        colWidths={activeInfo.colWidths}
         filters={filters}
         sorts={sorts}
         hiddenCols={hiddenCols}

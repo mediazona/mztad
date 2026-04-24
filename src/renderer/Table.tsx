@@ -85,6 +85,7 @@ function isNumericType(t: string): boolean {
 interface Props {
   tableId: string
   schema: ColumnSchema[]
+  colWidths: Record<string, number>
   filters: Filter[]
   sorts: Sort[]
   hiddenCols: Set<string>
@@ -103,6 +104,7 @@ interface Props {
 export function Table({
   tableId,
   schema,
+  colWidths,
   filters,
   sorts,
   hiddenCols,
@@ -300,6 +302,7 @@ export function Table({
         .map((c) => ({
           field: c.name,
           headerName: c.name,
+          width: colWidths[c.name] ?? 160,
           sortable: false,
           resizable: true,
           headerComponent: ColumnHeader,
@@ -335,7 +338,7 @@ export function Table({
             return classes.join(' ')
           },
         }))),
-    [rowIdColDef, schema, hiddenCols, sorts, cellRenderer, onAddFilter, onHideColumn, onToggleSort],
+    [rowIdColDef, schema, colWidths, hiddenCols, sorts, cellRenderer, onAddFilter, onHideColumn, onToggleSort],
   )
 
   const datasource = useMemo<IDatasource>(

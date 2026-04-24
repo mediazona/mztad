@@ -11,6 +11,15 @@ import type {
 import { buildOrderBy, buildQuickSearch, buildWhere, quoteIdent } from '@shared/sqlBuilder'
 
 const FIND_MATCH_LIMIT = 50000
+const COL_WIDTH_SAMPLE_ROWS = 5000
+const COL_WIDTH_PER_CHAR = 7.5
+// AG Grid quartz cells have ~17px horizontal padding on each side; header cells
+// additionally host the filter button. Keep a small safety margin so the last
+// character doesn't hit the resize-handle hit zone.
+const COL_WIDTH_HEADER_PAD = 64
+const COL_WIDTH_DATA_PAD = 46
+const COL_WIDTH_MIN = 72
+const COL_WIDTH_MAX = 400
 
 type Kind = OpenFileResult['kind']
 
@@ -19,7 +28,18 @@ interface TableMeta {
   kind: Kind
   cols: Set<string>
   schema: ColumnSchema[]
+  colWidths: Record<string, number>
   baseId?: string // set on custom-SQL views; points at the file-backed base view
+}
+
+function isNumericType(t: string): boolean {
+  const up = t.toUpperCase()
+  return (
+    up.includes('INT') ||
+    up === 'FLOAT' || up === 'DOUBLE' || up === 'REAL' ||
+    up.startsWith('DECIMAL') || up.startsWith('NUMERIC') ||
+    up === 'HUGEINT'
+  )
 }
 
 function detectKind(filePath: string): Kind {
@@ -74,6 +94,80 @@ export class DuckDBService {
     inner.set(this.filtersKey(filters), count)
   }
 
+  // Estimate initial column widths from a sample so tables open sized for
+  // their actual data instead of a one-size-fits-all default. Two queries run
+  // in parallel:
+  //   1. LIMIT-5000 sample, MAX(LENGTH(...)) per column — catches text/date/bool.
+  //   2. MIN/MAX per numeric column over the full table — catches autoincrement
+  //      keys whose max-length value sits at the end of the file and never
+  //      appears in the sample. Parquet answers from row-group stats; CSV/JSON
+  //      pay one linear pass.
+  // LIMIT is used instead of USING SAMPLE because LIMIT lets DuckDB stop after
+  // N rows, whereas reservoir sampling scans the full file.
+  private async computeColWidths(
+    tableId: string,
+    schema: ColumnSchema[],
+  ): Promise<Record<string, number>> {
+    const widths: Record<string, number> = {}
+    for (const c of schema) {
+      widths[c.name] = Math.min(
+        COL_WIDTH_MAX,
+        Math.max(COL_WIDTH_MIN, Math.round(c.name.length * COL_WIDTH_PER_CHAR + COL_WIDTH_HEADER_PAD)),
+      )
+    }
+    if (schema.length === 0) return widths
+
+    const tid = quoteIdent(tableId)
+    const sampleSelects = schema
+      .map((c, i) => `MAX(LENGTH(TRY_CAST(${quoteIdent(c.name)} AS VARCHAR))) AS c${i}`)
+      .join(', ')
+    const sampleSql = `SELECT ${sampleSelects} FROM (SELECT * FROM ${tid} LIMIT ${COL_WIDTH_SAMPLE_ROWS})`
+
+    const numericIdx = schema
+      .map((c, i) => (isNumericType(c.type) ? i : -1))
+      .filter((i) => i >= 0)
+    const extremesSql =
+      numericIdx.length > 0
+        ? `SELECT ${numericIdx
+            .map(
+              (i) =>
+                `LENGTH(TRY_CAST(MAX(${quoteIdent(schema[i]!.name)}) AS VARCHAR)) AS hi${i}, ` +
+                `LENGTH(TRY_CAST(MIN(${quoteIdent(schema[i]!.name)}) AS VARCHAR)) AS lo${i}`,
+            )
+            .join(', ')} FROM ${tid}`
+        : null
+
+    const samplePromise = this.metaConn.runAndReadAll(sampleSql).catch(() => null)
+    const extremesPromise = extremesSql
+      ? this.readConn.runAndReadAll(extremesSql).catch(() => null)
+      : Promise.resolve(null)
+    const [sampleReader, extremesReader] = await Promise.all([samplePromise, extremesPromise])
+
+    const sampleRow = sampleReader?.getRowObjects()[0] as
+      | Record<string, bigint | number | null>
+      | undefined
+    const extremesRow = extremesReader?.getRowObjects()[0] as
+      | Record<string, bigint | number | null>
+      | undefined
+    if (!sampleRow && !extremesRow) return widths
+
+    const toLen = (v: bigint | number | null | undefined): number =>
+      v == null ? 0 : Number(v)
+
+    for (let i = 0; i < schema.length; i++) {
+      const c = schema[i]!
+      const sampleLen = toLen(sampleRow?.[`c${i}`])
+      const hiLen = toLen(extremesRow?.[`hi${i}`])
+      const loLen = toLen(extremesRow?.[`lo${i}`])
+      const maxLen = Math.max(sampleLen, hiLen, loLen)
+      const headerPx = c.name.length * COL_WIDTH_PER_CHAR + COL_WIDTH_HEADER_PAD
+      const dataPx = maxLen * COL_WIDTH_PER_CHAR + COL_WIDTH_DATA_PAD
+      const w = Math.round(Math.max(headerPx, dataPx))
+      widths[c.name] = Math.min(COL_WIDTH_MAX, Math.max(COL_WIDTH_MIN, w))
+    }
+    return widths
+  }
+
   async init(): Promise<void> {
     this.instance = await DuckDBInstance.create(':memory:')
     this.readConn = await this.instance.connect()
@@ -100,9 +194,16 @@ export class DuckDBService {
     const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
     const rowCount = typeof cntRow.n === 'bigint' ? Number(cntRow.n) : Number(cntRow.n)
 
-    this.tables.set(tableId, { path: filePath, kind, cols: new Set(schema.map((c) => c.name)), schema })
+    const colWidths = await this.computeColWidths(tableId, schema)
+    this.tables.set(tableId, {
+      path: filePath,
+      kind,
+      cols: new Set(schema.map((c) => c.name)),
+      schema,
+      colWidths,
+    })
     this.setCachedCount(tableId, [], rowCount)
-    return { tableId, path: filePath, kind, schema, rowCount }
+    return { tableId, path: filePath, kind, schema, rowCount, colWidths }
   }
 
   async getPage(req: PageRequest): Promise<PageResult> {
@@ -192,15 +293,17 @@ export class DuckDBService {
     const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
     const rowCount = Number(cntRow.n)
 
+    const colWidths = await this.computeColWidths(customId, schema)
     this.tables.set(customId, {
       path: base.path,
       kind: base.kind,
       cols: new Set(schema.map((c) => c.name)),
       schema,
+      colWidths,
       baseId: baseTableId,
     })
     this.setCachedCount(customId, [], rowCount)
-    return { tableId: customId, path: base.path, kind: base.kind, schema, rowCount }
+    return { tableId: customId, path: base.path, kind: base.kind, schema, rowCount, colWidths }
   }
 
   async resetToBase(baseTableId: string): Promise<OpenFileResult> {
@@ -221,6 +324,7 @@ export class DuckDBService {
       kind: base.kind,
       schema: base.schema,
       rowCount,
+      colWidths: base.colWidths,
     }
   }
 

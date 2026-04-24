@@ -20,6 +20,8 @@ export interface OpenFileResult {
   kind: 'parquet' | 'csv' | 'tsv' | 'json'
   schema: ColumnSchema[]
   rowCount: number
+  // Estimated initial column widths in px, derived from a sample of the data.
+  colWidths: Record<string, number>
 }
 
 export type Filter =
