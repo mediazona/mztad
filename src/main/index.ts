@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import { DuckDBService } from './duckdb.js'
-import { createTracker, registerIpc } from './ipc.js'
+import { createTracker, disposeWatcherForWebContents, registerIpc } from './ipc.js'
 import { Recents } from './recents.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -57,6 +57,7 @@ function createWindowForFile(filePath: string): BrowserWindow {
   const wcId = win.webContents.id
   win.on('closed', () => {
     windowsByPath.delete(resolved)
+    disposeWatcherForWebContents(wcId)
     const leftover = tracker.takeAll(wcId)
     for (const id of leftover) void db.closeTable(id)
   })
@@ -95,6 +96,7 @@ function createEmptyWindow(): BrowserWindow {
   })
   const wcId = win.webContents.id
   win.on('closed', () => {
+    disposeWatcherForWebContents(wcId)
     const leftover = tracker.takeAll(wcId)
     for (const id of leftover) void db.closeTable(id)
   })

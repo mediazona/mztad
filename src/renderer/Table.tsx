@@ -208,7 +208,9 @@ export function Table({
   }, [matchIndexes, currentMatchIndex, searchText])
 
   // Scroll current match into view via DOM (AG Grid's ensureIndexVisible no-ops
-  // for infinite-row indices outside the current cache).
+  // for infinite-row indices outside the current cache). Skip the scroll when
+  // the match is already fully on screen — avoids jumpy navigation between
+  // clustered matches and prevents redundant block fetches.
   useEffect(() => {
     if (currentMatchIndex == null) return
     const api = gridApiRef.current
@@ -223,10 +225,14 @@ export function Table({
       if (el.scrollHeight > maxH) { main = el; maxH = el.scrollHeight }
     }
     if (!main) return
-    const target = Math.max(
-      0,
-      currentMatchIndex * rowHeight - main.clientHeight / 2 + rowHeight / 2,
-    )
+    const rowTop = currentMatchIndex * rowHeight
+    const rowBottom = rowTop + rowHeight
+    const visibleTop = main.scrollTop
+    const visibleBottom = visibleTop + main.clientHeight
+    if (rowTop >= visibleTop && rowBottom <= visibleBottom) return
+    // Position the match ~1/4 from the top — shorter scroll than centering,
+    // and keeps more context below the row where users usually look next.
+    const target = Math.max(0, rowTop - main.clientHeight / 4)
     main.scrollTop = target
   }, [currentMatchIndex])
 

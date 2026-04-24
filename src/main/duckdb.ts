@@ -52,7 +52,27 @@ export class DuckDBService {
   private readConn!: DuckDBConnection
   private metaConn!: DuckDBConnection
   private tables = new Map<string, TableMeta>()
+  // Cache COUNT(*) per (tableId, filters) so mid-scroll page fetches don't re-scan the file.
+  // Invalidated when the table is closed or replaced.
+  private countCache = new Map<string, Map<string, number>>()
   private idCounter = 0
+
+  private filtersKey(filters: unknown[]): string {
+    return filters.length === 0 ? '' : JSON.stringify(filters)
+  }
+
+  private getCachedCount(tableId: string, filters: unknown[]): number | undefined {
+    return this.countCache.get(tableId)?.get(this.filtersKey(filters))
+  }
+
+  private setCachedCount(tableId: string, filters: unknown[], count: number): void {
+    let inner = this.countCache.get(tableId)
+    if (!inner) {
+      inner = new Map()
+      this.countCache.set(tableId, inner)
+    }
+    inner.set(this.filtersKey(filters), count)
+  }
 
   async init(): Promise<void> {
     this.instance = await DuckDBInstance.create(':memory:')
@@ -81,6 +101,7 @@ export class DuckDBService {
     const rowCount = typeof cntRow.n === 'bigint' ? Number(cntRow.n) : Number(cntRow.n)
 
     this.tables.set(tableId, { path: filePath, kind, cols: new Set(schema.map((c) => c.name)), schema })
+    this.setCachedCount(tableId, [], rowCount)
     return { tableId, path: filePath, kind, schema, rowCount }
   }
 
@@ -92,16 +113,26 @@ export class DuckDBService {
     const where = whereSql ? `WHERE ${whereSql}` : ''
 
     const tid = quoteIdent(req.tableId)
-    const countSql = `SELECT COUNT(*)::BIGINT AS n FROM ${tid} ${where}`.trim()
     const pageSql = `SELECT * FROM ${tid} ${where} ${orderBy} LIMIT ${req.limit} OFFSET ${req.offset}`.trim()
+    const boundParams = params.length ? (params as never[]) : undefined
 
-    const cntReader = await this.readConn.runAndReadAll(countSql, params.length ? (params as never[]) : undefined)
+    const cached = this.getCachedCount(req.tableId, req.filters)
+    if (cached !== undefined) {
+      const pageReader = await this.readConn.runAndReadAll(pageSql, boundParams)
+      const rows = pageReader.getRowObjectsJson() as Record<string, unknown>[]
+      return { rows, totalMatched: cached, queryId: req.queryId }
+    }
+
+    const countSql = `SELECT COUNT(*)::BIGINT AS n FROM ${tid} ${where}`.trim()
+    // Count on metaConn, page on readConn — separate connections execute concurrently.
+    const [cntReader, pageReader] = await Promise.all([
+      this.metaConn.runAndReadAll(countSql, boundParams),
+      this.readConn.runAndReadAll(pageSql, boundParams),
+    ])
     const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
     const totalMatched = typeof cntRow.n === 'bigint' ? Number(cntRow.n) : Number(cntRow.n)
-
-    const pageReader = await this.readConn.runAndReadAll(pageSql, params.length ? (params as never[]) : undefined)
     const rows = pageReader.getRowObjectsJson() as Record<string, unknown>[]
-
+    this.setCachedCount(req.tableId, req.filters, totalMatched)
     return { rows, totalMatched, queryId: req.queryId }
   }
 
@@ -168,22 +199,28 @@ export class DuckDBService {
       schema,
       baseId: baseTableId,
     })
+    this.setCachedCount(customId, [], rowCount)
     return { tableId: customId, path: base.path, kind: base.kind, schema, rowCount }
   }
 
   async resetToBase(baseTableId: string): Promise<OpenFileResult> {
     const base = this.tables.get(baseTableId)
     if (!base) throw new Error(`Unknown baseTableId: ${baseTableId}`)
-    const cntReader = await this.metaConn.runAndReadAll(
-      `SELECT COUNT(*)::BIGINT AS n FROM ${quoteIdent(baseTableId)}`,
-    )
-    const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
+    let rowCount = this.getCachedCount(baseTableId, [])
+    if (rowCount === undefined) {
+      const cntReader = await this.metaConn.runAndReadAll(
+        `SELECT COUNT(*)::BIGINT AS n FROM ${quoteIdent(baseTableId)}`,
+      )
+      const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
+      rowCount = Number(cntRow.n)
+      this.setCachedCount(baseTableId, [], rowCount)
+    }
     return {
       tableId: baseTableId,
       path: base.path,
       kind: base.kind,
       schema: base.schema,
-      rowCount: Number(cntRow.n),
+      rowCount,
     }
   }
 
@@ -205,6 +242,7 @@ export class DuckDBService {
       /* view may already be gone; proceed to evict metadata */
     }
     this.tables.delete(tableId)
+    this.countCache.delete(tableId)
   }
 
   async cancel(_queryId: string): Promise<void> {
