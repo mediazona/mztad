@@ -3,6 +3,10 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.3]
+- fix: improve cells tooltips
+- fix: multiline csv files couldn't be opened
+
 ## [0.1.2]
 - feat: reload button when opened file changed
 - feat: auto resize columns to fit content on start (based on sample and extremes)

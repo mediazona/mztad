@@ -315,10 +315,21 @@ export function Table({
           tooltipValueGetter: (p) => {
             const v = p.value
             if (v === null || v === undefined) return ''
+            // Objects render as JSON in the cell — almost always worth a tooltip,
+            // and the multi-line pretty-printed form is the point of hovering.
             if (typeof v === 'object') {
               try { return JSON.stringify(v, null, 2) } catch { return String(v) }
             }
-            return String(v)
+            const text = String(v)
+            // Multiline values single-line-truncate in the cell — always tooltip.
+            if (text.includes('\n')) return text
+            // Suppress the tooltip when the value already fits the visible width.
+            // Conservative estimate: 8px/char and 40px of cell padding so we err
+            // on the side of *showing* the tooltip when widths are borderline.
+            const colWidth = p.column?.getActualWidth?.() ?? 0
+            const cellInner = Math.max(0, colWidth - 40)
+            if (text.length * 8 <= cellInner) return ''
+            return text
           },
           cellClass: (p) => {
             const classes: string[] = []
@@ -534,7 +545,7 @@ export function Table({
         suppressFieldDotNotation
         suppressCellFocus={false}
         suppressRowClickSelection
-        tooltipShowDelay={300}
+        tooltipShowDelay={2000}
       />
     </div>
   )

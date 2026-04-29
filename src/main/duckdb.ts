@@ -50,20 +50,23 @@ function detectKind(filePath: string): Kind {
   return 'csv'
 }
 
-function readerFor(kind: Kind, filePath: string): string {
+function readerFor(kind: Kind, filePath: string, opts: { parallel?: boolean } = {}): string {
   const lit = `'${filePath.replace(/'/g, "''")}'`
+  // DuckDB's CSV reader defaults to parallel; we only force parallel=false on
+  // the retry path after a parallel-reader failure (e.g. quoted newlines).
+  const serial = opts.parallel === false ? ', parallel=false' : ''
   switch (kind) {
     case 'parquet':
       return `read_parquet(${lit})`
     case 'tsv':
-      // TSV convention: no quote char — tabs don't appear in data, so " is treated as literal
-      return `read_csv_auto(${lit}, delim='\t', quote='', escape='')`
+      // TSV convention: no quote char — tabs don't appear in data, so " is treated as literal.
+      return `read_csv_auto(${lit}, delim='\t', quote='', escape=''${serial})`
     case 'json':
       // ignore_errors=true skips records whose auto-detected types can't be coerced
       // (common on large JSON files where one column has mixed empty strings + dates).
       return `read_json_auto(${lit}, ignore_errors=true)`
     case 'csv':
-      return `read_csv_auto(${lit}, quote='"', escape='"')`
+      return `read_csv_auto(${lit}, quote='"', escape='"'${serial})`
   }
 }
 
@@ -177,22 +180,44 @@ export class DuckDBService {
   async openFile(filePath: string): Promise<OpenFileResult> {
     const kind = detectKind(filePath)
     const tableId = `t_${++this.idCounter}`
-    const viewSql = `CREATE OR REPLACE VIEW ${quoteIdent(tableId)} AS SELECT * FROM ${readerFor(kind, filePath)}`
-    await this.metaConn.run(viewSql)
 
-    const descReader = await this.metaConn.runAndReadAll(`DESCRIBE ${quoteIdent(tableId)}`)
-    const descRows = descReader.getRowObjects() as Array<Record<string, unknown>>
-    const schema: ColumnSchema[] = descRows.map((r) => ({
-      name: String(r.column_name),
-      type: String(r.column_type),
-      nullable: String(r.null ?? 'YES').toUpperCase() === 'YES',
-    }))
+    // Read view, schema, and row count. CSV/TSV may need a serial retry —
+    // the parallel reader can't chunk across embedded newlines and aborts
+    // with "Not implemented … please run with the single threaded error".
+    const readWithOpts = async (
+      opts: { parallel?: boolean },
+    ): Promise<{ schema: ColumnSchema[]; rowCount: number }> => {
+      const viewSql = `CREATE OR REPLACE VIEW ${quoteIdent(tableId)} AS SELECT * FROM ${readerFor(kind, filePath, opts)}`
+      await this.metaConn.run(viewSql)
 
-    const cntReader = await this.metaConn.runAndReadAll(
-      `SELECT COUNT(*)::BIGINT AS n FROM ${quoteIdent(tableId)}`,
-    )
-    const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
-    const rowCount = typeof cntRow.n === 'bigint' ? Number(cntRow.n) : Number(cntRow.n)
+      const descReader = await this.metaConn.runAndReadAll(`DESCRIBE ${quoteIdent(tableId)}`)
+      const descRows = descReader.getRowObjects() as Array<Record<string, unknown>>
+      const schema: ColumnSchema[] = descRows.map((r) => ({
+        name: String(r.column_name),
+        type: String(r.column_type),
+        nullable: String(r.null ?? 'YES').toUpperCase() === 'YES',
+      }))
+
+      const cntReader = await this.metaConn.runAndReadAll(
+        `SELECT COUNT(*)::BIGINT AS n FROM ${quoteIdent(tableId)}`,
+      )
+      const cntRow = cntReader.getRowObjects()[0] as { n: bigint | number }
+      const rowCount = typeof cntRow.n === 'bigint' ? Number(cntRow.n) : Number(cntRow.n)
+
+      return { schema, rowCount }
+    }
+
+    let schema: ColumnSchema[]
+    let rowCount: number
+    try {
+      ;({ schema, rowCount } = await readWithOpts({}))
+    } catch (e) {
+      if (kind !== 'csv' && kind !== 'tsv') throw e
+      const msg = e instanceof Error ? e.message : String(e)
+      if (!/parallel/i.test(msg) && !/single threaded/i.test(msg)) throw e
+      try { await this.metaConn.run(`DROP VIEW IF EXISTS ${quoteIdent(tableId)}`) } catch { /* ignore */ }
+      ;({ schema, rowCount } = await readWithOpts({ parallel: false }))
+    }
 
     const colWidths = await this.computeColWidths(tableId, schema)
     this.tables.set(tableId, {
