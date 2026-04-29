@@ -682,6 +682,68 @@ mark.match-hl {
   align-items: center;
   justify-content: center;
 }
+
+.permissive-modal {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: min(90vw, 640px);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  gap: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  color: var(--fg);
+}
+.permissive-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.permissive-modal-error {
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(255, 107, 107, 0.10);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 4px;
+  color: #ff9a9a;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow: auto;
+  max-height: 320px;
+}
+.permissive-modal-explain {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.permissive-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.permissive-modal-actions button {
+  background: transparent;
+  border: 1px solid var(--chip-border);
+  color: var(--fg);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+.permissive-modal-actions button:hover {
+  border-color: var(--fg-dim);
+}
+.permissive-modal-confirm {
+  background: var(--accent) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent) !important;
+}
+.permissive-modal-confirm:hover {
+  filter: brightness(1.08);
+}
 .sql-modal {
   background: var(--bg-elev);
   border: 1px solid var(--border);

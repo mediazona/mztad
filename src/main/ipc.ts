@@ -1,5 +1,5 @@
 import { app, ipcMain, webContents } from 'electron'
-import type { FindMatchesRequest, PageRequest } from '@shared/types'
+import type { FindMatchesRequest, OpenFileOptions, PageRequest } from '@shared/types'
 import { DuckDBService } from './duckdb.js'
 import { FileWatcher } from './fileWatcher.js'
 import { Recents } from './recents.js'
@@ -52,8 +52,8 @@ export function registerIpc(
   tracker: WindowTableTracker,
   recents: Recents,
 ): void {
-  ipcMain.handle('mztad:openFile', async (e, filePath: string) => {
-    const result = await db.openFile(filePath)
+  ipcMain.handle('mztad:openFile', async (e, filePath: string, opts?: OpenFileOptions) => {
+    const result = await db.openFile(filePath, opts)
     const wcId = e.sender.id
     tracker.add(wcId, result.tableId)
     recents.add(filePath)

@@ -4,6 +4,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.1.3]
+- feat: support opening broken csv/tsv files
 - fix: improve cells tooltips
 - fix: multiline csv files couldn't be opened
 

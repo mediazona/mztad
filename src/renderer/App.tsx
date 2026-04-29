@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-quartz.css'
-import type { FindMatchesResult, Filter, OpenFileResult, Sort } from '@shared/types'
+import type { FindMatchesResult, Filter, OpenFileOptions, OpenFileResult, Sort } from '@shared/types'
 import { formatPageSql, quoteIdent } from '@shared/sqlBuilder'
 import { FilterChips } from './FilterChips.js'
 import { FilterPopover } from './FilterPopover.js'
@@ -40,6 +40,7 @@ export default function App() {
   const [recents, setRecents] = useState<string[]>([])
   const [fileStale, setFileStale] = useState(false)
   const [editingFilter, setEditingFilter] = useState<{ index: number; anchor: DOMRect } | null>(null)
+  const [permissivePrompt, setPermissivePrompt] = useState<{ path: string; message: string } | null>(null)
 
   // Fetch recents while there's no file open (i.e., while the empty state is showing).
   useEffect(() => {
@@ -113,16 +114,20 @@ export default function App() {
     })
   }, [matches.indexes.length])
 
-  const openPath = useCallback(async (filePath: string) => {
+  const openPath = useCallback(async (filePath: string, opts: OpenFileOptions = {}) => {
     setError(null)
     setFileStale(false)
+    setPermissivePrompt(null)
     const basename = filePath.split('/').pop() ?? filePath
-    setBusy({ title: `Opening ${basename}`, subtitle: 'scanning schema & row count…' })
+    setBusy({
+      title: `Opening ${basename}`,
+      subtitle: opts.permissive ? 'permissive mode — null padding & skip broken rows' : 'scanning schema & row count…',
+    })
     const oldIds = new Set<string>()
     if (baseInfo) oldIds.add(baseInfo.tableId)
     if (activeInfo) oldIds.add(activeInfo.tableId)
     try {
-      const info = await window.api.openFile(filePath)
+      const info = await window.api.openFile(filePath, opts)
       setBaseInfo(info)
       setActiveInfo(info)
       setFilters([])
@@ -136,7 +141,18 @@ export default function App() {
       oldIds.delete(info.tableId)
       for (const id of oldIds) void window.api.closeTable(id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      // For CSV/TSV, both the parallel and the deterministic-serial reads have
+      // already been tried in the main process. If we still failed and we
+      // weren't already in permissive mode, offer the user the more forgiving
+      // open path rather than just dumping the error.
+      const ext = filePath.split('.').pop()?.toLowerCase()
+      const isCsvLike = ext === 'csv' || ext === 'tsv'
+      if (!opts.permissive && isCsvLike) {
+        setPermissivePrompt({ path: filePath, message: msg })
+      } else {
+        setError(msg)
+      }
     } finally {
       setBusy(null)
     }
@@ -324,6 +340,36 @@ export default function App() {
     }
   }, [baseInfo, activeInfo])
 
+  const permissivePromptEl = permissivePrompt && (
+    <div className="modal-backdrop" onClick={() => setPermissivePrompt(null)}>
+      <div
+        className="permissive-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="permissive-modal-title">Couldn't open this file</div>
+        <pre className="permissive-modal-error">{permissivePrompt.message}</pre>
+        <div className="permissive-modal-explain">
+          Try a permissive read? Missing values become NULL and unparseable rows are skipped.
+        </div>
+        <div className="permissive-modal-actions">
+          <button onClick={() => setPermissivePrompt(null)}>Cancel</button>
+          <button
+            className="permissive-modal-confirm"
+            onClick={() => {
+              const path = permissivePrompt.path
+              setPermissivePrompt(null)
+              void openPath(path, { permissive: true })
+            }}
+          >
+            Open with permissive read
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
   if (!activeInfo || !baseInfo) {
     return (
       <div className="app">
@@ -367,6 +413,7 @@ export default function App() {
             {busy.subtitle && <div className="loading-sub">{busy.subtitle}</div>}
           </div>
         )}
+        {permissivePromptEl}
       </div>
     )
   }
@@ -527,6 +574,7 @@ export default function App() {
           {busy.subtitle && <div className="loading-sub">{busy.subtitle}</div>}
         </div>
       )}
+      {permissivePromptEl}
     </div>
   )
 }

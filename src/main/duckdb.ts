@@ -4,6 +4,7 @@ import type {
   ColumnSchema,
   FindMatchesRequest,
   FindMatchesResult,
+  OpenFileOptions,
   OpenFileResult,
   PageRequest,
   PageResult,
@@ -50,23 +51,37 @@ function detectKind(filePath: string): Kind {
   return 'csv'
 }
 
-function readerFor(kind: Kind, filePath: string, opts: { parallel?: boolean } = {}): string {
+interface CsvOpts {
+  parallel?: boolean
+  nullPadding?: boolean
+  ignoreErrors?: boolean
+}
+
+function readerFor(kind: Kind, filePath: string, opts: CsvOpts = {}): string {
   const lit = `'${filePath.replace(/'/g, "''")}'`
-  // DuckDB's CSV reader defaults to parallel; we only force parallel=false on
-  // the retry path after a parallel-reader failure (e.g. quoted newlines).
+  // DuckDB's CSV reader defaults to parallel. The parallel reader chunks the
+  // file across threads and can split a quoted multi-line field at a chunk
+  // boundary, producing nondeterministic open failures (Expected N / Found M
+  // column-count errors that don't repro on every attempt). parallel=false
+  // reads sequentially and is fully deterministic; we only fall back to it
+  // after the parallel attempt fails.
+  // null_padding + ignore_errors are reserved for opt-in permissive opens
+  // (user confirms after the deterministic read also fails).
   const serial = opts.parallel === false ? ', parallel=false' : ''
+  const nullPad = opts.nullPadding ? ', null_padding=true' : ''
+  const ignoreErr = opts.ignoreErrors ? ', ignore_errors=true' : ''
   switch (kind) {
     case 'parquet':
       return `read_parquet(${lit})`
     case 'tsv':
       // TSV convention: no quote char — tabs don't appear in data, so " is treated as literal.
-      return `read_csv_auto(${lit}, delim='\t', quote='', escape=''${serial})`
+      return `read_csv_auto(${lit}, delim='\t', quote='', escape=''${serial}${nullPad}${ignoreErr})`
     case 'json':
       // ignore_errors=true skips records whose auto-detected types can't be coerced
       // (common on large JSON files where one column has mixed empty strings + dates).
       return `read_json_auto(${lit}, ignore_errors=true)`
     case 'csv':
-      return `read_csv_auto(${lit}, quote='"', escape='"'${serial})`
+      return `read_csv_auto(${lit}, quote='"', escape='"'${serial}${nullPad}${ignoreErr})`
   }
 }
 
@@ -177,15 +192,17 @@ export class DuckDBService {
     this.metaConn = await this.instance.connect()
   }
 
-  async openFile(filePath: string): Promise<OpenFileResult> {
+  async openFile(filePath: string, opts?: OpenFileOptions): Promise<OpenFileResult> {
     const kind = detectKind(filePath)
     const tableId = `t_${++this.idCounter}`
 
-    // Read view, schema, and row count. CSV/TSV may need a serial retry —
-    // the parallel reader can't chunk across embedded newlines and aborts
-    // with "Not implemented … please run with the single threaded error".
+    // CSV/TSV: try the parallel reader first (fast); on any failure, retry
+    // once with parallel=false, which reads the file deterministically and
+    // honors quoted newlines correctly. We don't try further fallbacks
+    // (null_padding etc.) because those can silently mask genuinely malformed
+    // files — better to surface DuckDB's error and let the user decide.
     const readWithOpts = async (
-      opts: { parallel?: boolean },
+      opts: CsvOpts,
     ): Promise<{ schema: ColumnSchema[]; rowCount: number }> => {
       const viewSql = `CREATE OR REPLACE VIEW ${quoteIdent(tableId)} AS SELECT * FROM ${readerFor(kind, filePath, opts)}`
       await this.metaConn.run(viewSql)
@@ -209,14 +226,22 @@ export class DuckDBService {
 
     let schema: ColumnSchema[]
     let rowCount: number
-    try {
-      ;({ schema, rowCount } = await readWithOpts({}))
-    } catch (e) {
-      if (kind !== 'csv' && kind !== 'tsv') throw e
-      const msg = e instanceof Error ? e.message : String(e)
-      if (!/parallel/i.test(msg) && !/single threaded/i.test(msg)) throw e
-      try { await this.metaConn.run(`DROP VIEW IF EXISTS ${quoteIdent(tableId)}`) } catch { /* ignore */ }
-      ;({ schema, rowCount } = await readWithOpts({ parallel: false }))
+    if (opts?.permissive && (kind === 'csv' || kind === 'tsv')) {
+      // User has confirmed they want a relaxed read after a strict open failed.
+      // Single attempt with the most forgiving CSV options DuckDB exposes.
+      ;({ schema, rowCount } = await readWithOpts({
+        parallel: false,
+        nullPadding: true,
+        ignoreErrors: true,
+      }))
+    } else {
+      try {
+        ;({ schema, rowCount } = await readWithOpts({}))
+      } catch (e) {
+        if (kind !== 'csv' && kind !== 'tsv') throw e
+        try { await this.metaConn.run(`DROP VIEW IF EXISTS ${quoteIdent(tableId)}`) } catch { /* ignore */ }
+        ;({ schema, rowCount } = await readWithOpts({ parallel: false }))
+      }
     }
 
     const colWidths = await this.computeColWidths(tableId, schema)

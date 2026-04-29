@@ -65,8 +65,15 @@ export interface FindMatchesResult {
   truncated: boolean
 }
 
+export interface OpenFileOptions {
+  // Permissive mode: skip the parallel→serial fallback, read with
+  // null_padding=true + ignore_errors=true so ragged or partially-broken
+  // CSV/TSV files load (with NULLs and skipped rows) instead of erroring.
+  permissive?: boolean
+}
+
 export interface IpcApi {
-  openFile(path: string): Promise<OpenFileResult>
+  openFile(path: string, opts?: OpenFileOptions): Promise<OpenFileResult>
   getPage(req: PageRequest): Promise<PageResult>
   cancel(queryId: string): Promise<void>
   runSql(sql: string): Promise<{ columns: ColumnSchema[]; rows: Record<string, unknown>[] }>

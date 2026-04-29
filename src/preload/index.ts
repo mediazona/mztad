@@ -10,7 +10,8 @@ import type {
 } from '@shared/types'
 
 const api: IpcApi = {
-  openFile: (filePath) => ipcRenderer.invoke('mztad:openFile', filePath) as Promise<OpenFileResult>,
+  openFile: (filePath, opts) =>
+    ipcRenderer.invoke('mztad:openFile', filePath, opts) as Promise<OpenFileResult>,
   getPage: (req: PageRequest) => ipcRenderer.invoke('mztad:getPage', req) as Promise<PageResult>,
   cancel: (queryId) => ipcRenderer.invoke('mztad:cancel', queryId) as Promise<void>,
   runSql: (sql) =>
